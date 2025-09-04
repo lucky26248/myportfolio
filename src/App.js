@@ -63,9 +63,11 @@ function App() {
         <section className=" m-0 p-4"> {/* Added Projects Section */}
           <Projects />
         </section>
+
         {/* <section className=" m-0 p-4"> 
           <Dashboard />
         </section> */}
+        
         <section className=" m-0 p-4"> {/* Added Footer Section */}
           <Footer />
         </section>
