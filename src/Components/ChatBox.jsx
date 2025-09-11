@@ -8,14 +8,25 @@ const authToken = process.env.REACT_APP_AUTH_TOKEN_KEY;
 export default function ChatBox() {
     const [isOpen, setIsOpen] = useState(false);
     const [showHint, setShowHint] = useState(false);
-    const timerRef = useRef(null);
     const [generating, setGenerating] = useState(false);
-    const inputRef = useRef(null);
     const [messages, setMessages] = useState([
         { from: "ai", text: `Hello! 👋 I’m your AI assistant. Ask me anything about ${name}.` },
     ]);
     const [input, setInput] = useState("");
+    const [sessionId, setSessionId] = useState("default-session");
     const chatEndRef = useRef(null);
+    const showHintTimeout = useRef(null);
+    const inputRef = useRef(null);
+
+    const handleFocus = () => {
+        setTimeout(() => {
+            inputRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+            inputRef.current?.focus();
+        }, 300); // 0.3 sec delay
+    };
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -25,11 +36,11 @@ export default function ChatBox() {
         const userMessage = input;
         setInput("");
         setGenerating(true);
-        let url = `${aiBaseURL}/api/chat/prompt?authToken=${authToken}&prompt=${userMessage}`;
+        let url = `${aiBaseURL}/api/chat/prompt?authToken=${authToken}&sessionId=${sessionId}&prompt=${userMessage}`;
         console.log("Fetching AI response from URL:", url);
         try {
             const response = await fetch(
-                `${aiBaseURL}/api/chat/prompt?authToken=${authToken}&prompt=${userMessage}`
+                url
             );
 
             const result = await response.json();
@@ -54,65 +65,58 @@ export default function ChatBox() {
         }
     };
 
-
     // Auto-scroll
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
+    //generate session id
     useEffect(() => {
+        const generateSessionId = () => {
+            return Math.random().toString(36).slice(2, 12); // 10 chars
+        };
+        setSessionId(generateSessionId());
+    }, []);
+
+    useEffect(() => {
+        let focusTimeOut = null;
         if (isOpen) {
-            clearTimer();
+            //scrolling input into view when chat is opened
+            handleFocus();
             return;
         }
-        startCycle();
-
-        return () => clearTimer();
-    }, [isOpen]);
-
-    const clearTimer = () => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-    };
-
-    function startCycle() {
-        clearTimer();
-        // hide first
-        setShowHint(false);
-
-        // after 20s → show for 4s
-        timerRef.current = setTimeout(() => {
+        // stop when chat is open
+        const interval = setInterval(() => {
+            if (showHintTimeout.current) return;
             setShowHint(true);
+            showHintTimeout.current = setTimeout(() => setShowHint(false), 5000);
+        }, 10000);
 
-            // after 4s → restart the cycle
-            timerRef.current = setTimeout(() => startCycle(), 8000);
-        }, 20000);
-    }
-
-    const handleFocus = () => {
-        setTimeout(() => {
-            inputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 300);
-    };
+        return () => {
+            clearInterval(interval);
+            clearTimeout(showHintTimeout.current);
+            if (focusTimeOut) clearTimeout(focusTimeOut);
+        };
+    }, [isOpen]);
 
     return (
         <div className="fixed bottom-6 right-6 z-50">
             {/* Collapsed Button */}
             {!isOpen ? (
-                <div className="flex flex-col items-end gap-2">
-                    {showHint && <AnimatePresence>
-                        <motion.p
-                            initial={{ opacity: 0, y: 12 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 12 }}
-                            transition={{ duration: 1, repeat: Infinity, repeatType: "reverse", ease: "linear" }}
-                            className="text-center text-sm text-gray-600 bg-gradient-to-r from-purple-200 to-blue-200 px-3 py-1 rounded-full shadow-md mb-3"
-                        >
-                            Ask anything about {name} 👇
-                        </motion.p>
-                    </AnimatePresence>}
+                <div className="flex flex-col items-end">
+                    {showHint &&
+                        <AnimatePresence>
+                            <motion.p
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 1, repeat: Infinity, repeatType: "reverse" }}
+                                className="text-center text-sm text-gray-600 bg-gradient-to-r from-purple-200 to-blue-200 px-3 py-1 rounded-full shadow-md mb-4"
+                            >
+                                Ask anything about {name} 👇
+                            </motion.p>
+                        </AnimatePresence>
+                    }
                     <motion.button
                         initial={{ opacity: 0, x: 10 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -131,21 +135,30 @@ export default function ChatBox() {
                             }}
                         />
                         <div className="relative z-10 flex items-center gap-2 bg-gradient-to-r from-purple-200 to-blue-200 rounded-full px-5 py-3">
-                            <img src={ailogo} alt="SelfServe.ai" className="h-8 w-auto transition duration-100 hover:scale-105" />
+                            <img src={ailogo} alt="SelfServe.ai" className="h-8 w-auto cursor-pointer hover:scale-105 duration-200" />
                         </div>
                     </motion.button>
                 </div>
-            ) : <AnimatePresence>
+            ) : <AnimatePresence onWheel={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}>
                 {(
                     <motion.div
-                        initial={{ opacity: 0, scale: 0.8, y: 50 }}
+                        initial={{ opacity: 0, scale: 0.9, y: 50 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.8, y: 50 }}
+                        exit={{ opacity: 0, scale: 0.9, y: 50 }}
                         transition={{ duration: 0.3, ease: "easeInOut" }}
-                        className="fixed inset-0 z-50 flex flex-col bg-white h-[100dvh] sm:static sm:w-full sm:max-w-sm sm:rounded-2xl sm:shadow-xl sm:border sm:overflow-hidden md:w-96 md:h-[75vh] sm:h-[28rem]"
+                        className="
+                            w-[100vw] h-[90vh] sm:max-w-sm md:w-96 md:h-[75vh]
+                            rounded-none sm:rounded-2xl
+                            shadow-xl border bg-white
+                            fixed inset-0 sm:relative
+                            flex flex-col
+                            overflow-y-hidden
+                            child-scroll overscroll-contain
+                        "
                     >
-                        {/* Header */}
-                        <div className="bg-gradient-to-r from-purple-400 to-blue-400 text-white text-lg font-semibold px-3 py-3 flex justify-between items-center">
+                        {/* Header (always visible at top) */}
+                        <div className="bg-gradient-to-r from-purple-400 to-blue-400 text-white text-lg font-semibold px-4 py-3 flex justify-between items-center sticky top-0 z-10">
                             SelfServe.ai – Chat
                             <button
                                 onClick={() => setIsOpen(false)}
@@ -172,7 +185,7 @@ export default function ChatBox() {
                                                 href={part}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="text-blue-300 cursor-pointer"
+                                                className="text-blue-300 hover:underline"
                                             >
                                                 link
                                             </a>
@@ -185,22 +198,22 @@ export default function ChatBox() {
                             <div ref={chatEndRef}></div>
                         </div>
 
-                        {/* Input */}
-                        <div className="flex items-center justify-center border-t px-3 py-2">
+                        {/* Input (sticks to bottom, moves above keyboard on mobile) */}
+                        <div className="flex items-center border-t px-3 py-2 bg-white sticky bottom-0">
                             <input
                                 type="text"
                                 className="flex-1 outline-none text-sm px-3 py-2 rounded-xl text-black bg-gray-100 focus:ring-1 focus:ring-blue-400 transition"
                                 placeholder={`Ask about ${name}...`}
                                 value={input}
                                 ref={inputRef}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && handleSend()}
                                 onFocus={handleFocus}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                             />
                             <button
                                 onClick={handleSend}
                                 disabled={input.length <= 5 || generating}
-                                className="ml-3 text-gray-600 hover:text-gray-900 disabled:text-gray-400 disabled:cursor-not-allowed "
+                                className="ml-3 text-gray-600 hover:text-gray-900 disabled:text-gray-400 disabled:cursor-not-allowed"
                                 aria-disabled={input.length <= 5 || generating}
                             >
                                 <motion.div
@@ -218,7 +231,7 @@ export default function ChatBox() {
                 )}
             </AnimatePresence>
             }
-        </div>
+        </div >
     );
 }
 
